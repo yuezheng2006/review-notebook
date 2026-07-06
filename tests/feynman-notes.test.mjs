@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  createFeynmanNote,
+  listFeynmanNotesForUser,
+  normalizeFeynmanNoteInput,
+  recordFeynmanReview
+} from '../web/src/feynman-notes.js';
+import { createEmptyState } from '../web/src/storage.js';
+
+const NOW = new Date('2026-05-17T10:00:00.000Z');
+
+test('normalizeFeynmanNoteInput requires a concept and keeps learning fields', () => {
+  const invalid = normalizeFeynmanNoteInput({ concept: '' });
+  assert.equal(invalid.ok, false);
+
+  const valid = normalizeFeynmanNoteInput({
+    subject: '数学',
+    concept: '单位',
+    explainSimply: '答案要带单位',
+    teachBack: '如果讲给同学听，我会先问题目问什么',
+    stuckPoint: '总忘记最后写单位',
+    unfamiliarPoint: '应用题单位转换',
+    example: '36支',
+    relatedMistakeId: 'm1'
+  });
+
+  assert.equal(valid.ok, true);
+  assert.equal(valid.note.concept, '单位');
+  assert.equal(valid.note.mastery, '不熟');
+});
+
+test('createFeynmanNote stores user note and links related mistake', () => {
+  const result = createFeynmanNote(createEmptyState(), 'u1', {
+    subject: '数学',
+    concept: '单位',
+    explainSimply: '答案要带单位',
+    stuckPoint: '容易漏写',
+    relatedMistakeId: 'm1'
+  }, NOW);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state.feynmanNotes.length, 1);
+  assert.equal(result.note.userId, 'u1');
+  assert.equal(result.note.relatedMistakeId, 'm1');
+});
+
+test('recordFeynmanReview appends review process and can raise mastery', () => {
+  const created = createFeynmanNote(createEmptyState(), 'u1', {
+    subject: '数学',
+    concept: '单位',
+    explainSimply: '答案要带单位'
+  }, NOW);
+
+  const reviewed = recordFeynmanReview(created.state, 'u1', created.note.id, {
+    reviewText: '今天能讲清为什么要写单位',
+    mastery: '能讲清'
+  }, new Date('2026-05-18T10:00:00.000Z'));
+
+  assert.equal(reviewed.ok, true);
+  assert.equal(reviewed.note.mastery, '能讲清');
+  assert.equal(reviewed.note.reviewLogs.length, 1);
+});
+
+test('listFeynmanNotesForUser sorts newest updated notes first', () => {
+  let state = createEmptyState();
+  state = createFeynmanNote(state, 'u1', {
+    subject: '数学',
+    concept: '单位',
+    explainSimply: '答案要带单位'
+  }, NOW).state;
+  state = createFeynmanNote(state, 'u1', {
+    subject: '语文',
+    concept: '形近字',
+    explainSimply: '看偏旁'
+  }, new Date('2026-05-18T10:00:00.000Z')).state;
+
+  const notes = listFeynmanNotesForUser(state, 'u1');
+  assert.deepEqual(notes.map((note) => note.concept), ['形近字', '单位']);
+});
